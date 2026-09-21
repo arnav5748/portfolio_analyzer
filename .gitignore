@@ -1,5 +1,6 @@
 .env
 .env.*
+!.env.example
 
 __pycache__/
 *.py[cod]
@@ -11,3 +12,7 @@ env/
 .ipynb_checkpoints/
 
 models/
+
+database_backup.sql
+__pycache__/
+.venv/
