@@ -1,0 +1,74 @@
+
+==================================================
+TABLE: assets
+==================================================
+Total rows: 42
+
+Columns:
+asset_id | int
+ticker | varchar(20)
+company_name | varchar(150)
+sector | varchar(100)
+asset_type | varchar(30)
+
+Sample records:
+(1, 'AAPL', 'Apple Inc.', 'Technology', 'STOCK')
+(2, 'MSFT', 'Microsoft Corporation', 'Technology', 'STOCK')
+(3, 'NVDA', 'NVIDIA Corporation', 'Technology', 'STOCK')
+
+==================================================
+TABLE: factor_returns
+==================================================
+Total rows: 1653
+
+Columns:
+factor_date | date
+mkt_rf | decimal(15,8)
+smb | decimal(15,8)
+hml | decimal(15,8)
+rmw | decimal(15,8)
+cma | decimal(15,8)
+mom | decimal(15,8)
+rf | decimal(15,8)
+
+Sample records:
+(datetime.date(2020, 1, 2), Decimal('0.00860000'), Decimal('-0.00970000'), Decimal('-0.00340000'), Decimal('0.00230000'), Decimal('-0.00220000'), Decimal('0.00830000'), Decimal('0.00010000'))
+(datetime.date(2020, 1, 3), Decimal('-0.00670000'), Decimal('0.00290000'), Decimal('0.00010000'), Decimal('-0.00140000'), Decimal('-0.00170000'), Decimal('0E-8'), Decimal('0.00010000'))
+(datetime.date(2020, 1, 6), Decimal('0.00360000'), Decimal('-0.00220000'), Decimal('-0.00550000'), Decimal('-0.00160000'), Decimal('-0.00310000'), Decimal('-0.00680000'), Decimal('0.00010000'))
+
+==================================================
+TABLE: macro_indicators
+==================================================
+Total rows: 6008
+
+Columns:
+macro_id | bigint
+indicator_date | date
+indicator_name | varchar(100)
+indicator_value | decimal(20,8)
+
+Sample records:
+(1, datetime.date(2020, 1, 2), 'VIX', Decimal('12.47000000'))
+(2, datetime.date(2020, 1, 3), 'VIX', Decimal('14.02000000'))
+(3, datetime.date(2020, 1, 6), 'VIX', Decimal('13.85000000'))
+
+==================================================
+TABLE: stock_prices
+==================================================
+Total rows: 70854
+
+Columns:
+price_id | bigint
+asset_id | int
+trading_date | date
+open_price | decimal(15,6)
+high_price | decimal(15,6)
+low_price | decimal(15,6)
+close_price | decimal(15,6)
+adjusted_close | decimal(15,6)
+volume | bigint
+
+Sample records:
+(1, 1, datetime.date(2020, 1, 2), Decimal('74.059998'), Decimal('75.150002'), Decimal('73.797501'), Decimal('75.087502'), Decimal('72.271545'), 135480400)
+(2, 1, datetime.date(2020, 1, 3), Decimal('74.287498'), Decimal('75.144997'), Decimal('74.125000'), Decimal('74.357498'), Decimal('71.568916'), 146322800)
+(3, 1, datetime.date(2020, 1, 6), Decimal('73.447502'), Decimal('74.989998'), Decimal('73.187500'), Decimal('74.949997'), Decimal('72.139183'), 118387200)
