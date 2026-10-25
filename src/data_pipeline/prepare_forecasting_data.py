@@ -1,28 +1,40 @@
+
 import pandas as pd
-import os
+import numpy as np
+from pathlib import Path
 
+# --------------------------------------------------
+# 1. PATHS
+# --------------------------------------------------
 
-INPUT_FILE = "data/processed/portfolio_ml_dataset.csv"
-OUTPUT_DIR = "data/processed/forecasting"
+BASE_DIR = Path(__file__).resolve().parents[2]
 
+INPUT_PATH = BASE_DIR / "data" / "processed" / "portfolio_ml_dataset.csv"
+OUTPUT_DIR = BASE_DIR / "data" / "processed" / "forecasting"
 
-FEATURE_COLUMNS = [
-    # Portfolio features
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# --------------------------------------------------
+# 2. LOAD DATA
+# --------------------------------------------------
+
+df = pd.read_csv(INPUT_PATH)
+
+df["trading_date"] = pd.to_datetime(df["trading_date"])
+df = df.sort_values("trading_date").reset_index(drop=True)
+
+print("Original dataset:", df.shape)
+
+# --------------------------------------------------
+# 3. FEATURES AND TARGET SOURCE
+# --------------------------------------------------
+
+feature_columns = [
     "portfolio_return",
     "portfolio_volatility_20d",
     "annualized_portfolio_volatility",
     "portfolio_drawdown",
-
-    # Fama-French factors
-    "mkt_rf",
-    "smb",
-    "hml",
-    "rmw",
-    "cma",
-    "mom",
-    "rf",
-
-    # Macro indicators
+    "mkt_rf", "smb", "hml", "rmw", "cma", "mom", "rf",
     "CPI",
     "FEDERAL_FUNDS_RATE",
     "TREASURY_10Y",
@@ -30,166 +42,134 @@ FEATURE_COLUMNS = [
     "VIX"
 ]
 
-TARGET_COLUMN = "high_future_risk"
+target_source = "future_volatility_10d"
 
-
-# Load dataset
-df = pd.read_csv(INPUT_FILE)
-
-df["trading_date"] = pd.to_datetime(df["trading_date"])
-
-print("Original dataset shape:", df.shape)
-
-
-# Keep date + ML features + target
-ml_data = df[
-    ["trading_date"] + FEATURE_COLUMNS + [TARGET_COLUMN]
-].copy()
-
-
-# Remove rows where target is unavailable
-# or any required feature is missing
-ml_data = ml_data.dropna(
-    subset=FEATURE_COLUMNS + [TARGET_COLUMN]
+# Remove rows with missing required data
+df = df.dropna(
+    subset=feature_columns + [target_source]
 ).copy()
 
+df = df.reset_index(drop=True)
 
-# Target should be integer 0/1
-ml_data[TARGET_COLUMN] = ml_data[TARGET_COLUMN].astype(int)
+# --------------------------------------------------
+# 4. ROLLING HISTORICAL THRESHOLD
+# --------------------------------------------------
 
+# Historical future-volatility observations are shifted
+# by 10 trading days to avoid using outcomes that would
+# not yet have been observable at the forecast date.
 
-# Sort chronologically
-ml_data = ml_data.sort_values("trading_date").reset_index(drop=True)
+historical_volatility = df[target_source].shift(10)
 
-
-print("\nClean forecasting dataset shape:")
-print(ml_data.shape)
-
-print("\nDate range:")
-print(
-    ml_data["trading_date"].min(),
-    "to",
-    ml_data["trading_date"].max()
+df["risk_threshold"] = (
+    historical_volatility
+    .rolling(window=252, min_periods=126)
+    .quantile(0.90)
 )
 
-print("\nMissing values:")
-print(ml_data.isnull().sum())
-
-print("\nTarget distribution:")
-print(ml_data[TARGET_COLUMN].value_counts())
-
-
-# Create output directory
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-
-# ---------------------------------------------------------
-# Full forecasting dataset
-# ---------------------------------------------------------
-
-ml_data.to_csv(
-    f"{OUTPUT_DIR}/forecasting_dataset.csv",
-    index=False
+# Create binary target
+df["high_future_risk"] = np.where(
+    df["risk_threshold"].notna(),
+    (
+        df[target_source] >= df["risk_threshold"]
+    ).astype(int),
+    np.nan
 )
 
+# Remove initial rows without enough historical data
+df = df.dropna(
+    subset=["risk_threshold", "high_future_risk"]
+).copy()
 
-# ---------------------------------------------------------
-# Chronological train / validation / test split
-# 70% / 15% / 15%
-# ---------------------------------------------------------
+df["high_future_risk"] = df["high_future_risk"].astype(int)
 
-n = len(ml_data)
+df = df.reset_index(drop=True)
+
+print("\nDataset after rolling threshold:", df.shape)
+
+# --------------------------------------------------
+# 5. CHRONOLOGICAL SPLIT
+# --------------------------------------------------
+
+n = len(df)
 
 train_end = int(n * 0.70)
 val_end = int(n * 0.85)
 
-train = ml_data.iloc[:train_end].copy()
-validation = ml_data.iloc[train_end:val_end].copy()
-test = ml_data.iloc[val_end:].copy()
+train_df = df.iloc[:train_end].copy()
+val_df = df.iloc[train_end:val_end].copy()
+test_df = df.iloc[val_end:].copy()
 
+# --------------------------------------------------
+# 6. CLASS DISTRIBUTION
+# --------------------------------------------------
 
-# Save full splits
-train.to_csv(
-    f"{OUTPUT_DIR}/train.csv",
+for name, part in [
+    ("TRAIN", train_df),
+    ("VALIDATION", val_df),
+    ("TEST", test_df)
+]:
+
+    print(f"\n{name}")
+    print("Rows:", len(part))
+    print(part["high_future_risk"].value_counts().sort_index())
+    print(
+        part["high_future_risk"]
+        .value_counts(normalize=True)
+        .sort_index()
+    )
+
+# --------------------------------------------------
+# 7. PREPARE X AND Y
+# --------------------------------------------------
+
+X_train = train_df[feature_columns]
+y_train = train_df["high_future_risk"]
+
+X_val = val_df[feature_columns]
+y_val = val_df["high_future_risk"]
+
+X_test = test_df[feature_columns]
+y_test = test_df["high_future_risk"]
+
+# --------------------------------------------------
+# 8. SAVE DATASETS
+# --------------------------------------------------
+
+combined_df = pd.concat(
+    [train_df, val_df, test_df],
+    ignore_index=True
+)
+
+combined_df.to_csv(
+    OUTPUT_DIR / "forecasting_dataset.csv",
     index=False
 )
 
-validation.to_csv(
-    f"{OUTPUT_DIR}/validation.csv",
+train_df.to_csv(OUTPUT_DIR / "train.csv", index=False)
+val_df.to_csv(OUTPUT_DIR / "validation.csv", index=False)
+test_df.to_csv(OUTPUT_DIR / "test.csv", index=False)
+
+X_train.to_csv(OUTPUT_DIR / "X_train.csv", index=False)
+y_train.to_csv(OUTPUT_DIR / "y_train.csv", index=False)
+
+X_val.to_csv(OUTPUT_DIR / "X_validation.csv", index=False)
+y_val.to_csv(OUTPUT_DIR / "y_validation.csv", index=False)
+
+X_test.to_csv(OUTPUT_DIR / "X_test.csv", index=False)
+y_test.to_csv(OUTPUT_DIR / "y_test.csv", index=False)
+
+# Save threshold history for auditability
+df[[
+    "trading_date",
+    target_source,
+    "risk_threshold",
+    "high_future_risk"
+]].to_csv(
+    OUTPUT_DIR / "risk_threshold_history.csv",
     index=False
 )
 
-test.to_csv(
-    f"{OUTPUT_DIR}/test.csv",
-    index=False
-)
-
-
-# ---------------------------------------------------------
-# Separate X and y for Teammate 2
-# ---------------------------------------------------------
-
-X_train = train[FEATURE_COLUMNS]
-y_train = train[TARGET_COLUMN]
-
-X_validation = validation[FEATURE_COLUMNS]
-y_validation = validation[TARGET_COLUMN]
-
-X_test = test[FEATURE_COLUMNS]
-y_test = test[TARGET_COLUMN]
-
-
-X_train.to_csv(
-    f"{OUTPUT_DIR}/X_train.csv",
-    index=False
-)
-
-y_train.to_csv(
-    f"{OUTPUT_DIR}/y_train.csv",
-    index=False
-)
-
-X_validation.to_csv(
-    f"{OUTPUT_DIR}/X_validation.csv",
-    index=False
-)
-
-y_validation.to_csv(
-    f"{OUTPUT_DIR}/y_validation.csv",
-    index=False
-)
-
-X_test.to_csv(
-    f"{OUTPUT_DIR}/X_test.csv",
-    index=False
-)
-
-y_test.to_csv(
-    f"{OUTPUT_DIR}/y_test.csv",
-    index=False
-)
-
-
-print("\n--------------------------------")
-print("FORECASTING DATA READY")
-print("--------------------------------")
-
-print("\nTrain:", train.shape)
-print("Validation:", validation.shape)
-print("Test:", test.shape)
-
-print("\nTrain dates:")
-print(train["trading_date"].min(), "to", train["trading_date"].max())
-
-print("\nValidation dates:")
-print(
-    validation["trading_date"].min(),
-    "to",
-    validation["trading_date"].max()
-)
-
-print("\nTest dates:")
-print(test["trading_date"].min(), "to", test["trading_date"].max())
-
-print("\nFiles saved in:")
-print(OUTPUT_DIR)
+print("\nForecasting dataset preparation completed!")
+print("Features:", len(feature_columns))
+print("Files saved to:", OUTPUT_DIR)

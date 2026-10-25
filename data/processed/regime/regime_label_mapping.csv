@@ -1,0 +1,9 @@
+method,state_id,semantic_label
+GMM,0,Calm / Low Volatility
+GMM,1,Favorable / Low Drawdown
+GMM,2,Stressed / Elevated Volatility
+GMM,3,Extreme Volatility / Severe Stress
+HMM,0,Favorable / Low Drawdown
+HMM,1,Stressed / Elevated Volatility
+HMM,2,Extreme Volatility / Severe Stress
+HMM,3,Calm / Low Volatility
